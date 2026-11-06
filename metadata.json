@@ -1,0 +1,6 @@
+{
+  "name": "PromptCut",
+  "description": "AI prompt-driven video editor where users can import media files and describe edits in natural language to generate edited videos with effects, cuts, and captions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

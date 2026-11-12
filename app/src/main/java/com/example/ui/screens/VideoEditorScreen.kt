@@ -15,18 +15,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.HighQuality
 import androidx.compose.material.icons.filled.MovieCreation
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -45,6 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.ui.components.CaptionEditorDialog
+import com.example.ui.components.CutEditorDialog
 import com.example.ui.components.ExportDialog
 import com.example.ui.components.MediaPickerSection
 import com.example.ui.components.PromptEditorSection
@@ -52,8 +52,6 @@ import com.example.ui.components.TimelineTracksView
 import com.example.ui.components.VideoPlayerCanvas
 import com.example.ui.theme.AccentElectricCyan
 import com.example.ui.theme.PrimaryNeonPurple
-import com.example.ui.theme.StudioCardBg
-import com.example.ui.theme.StudioCardBgElevated
 import com.example.ui.theme.StudioDarkBg
 import com.example.viewmodel.VideoEditorViewModel
 
@@ -70,12 +68,19 @@ fun VideoEditorScreen(
     val aiUiState by viewModel.aiUiState.collectAsStateWithLifecycle()
     val currentEditPlan by viewModel.currentEditPlan.collectAsStateWithLifecycle()
     val activeFilter by viewModel.activeFilter.collectAsStateWithLifecycle()
+    val filterIntensity by viewModel.filterIntensity.collectAsStateWithLifecycle()
+    val isAudioMuted by viewModel.isAudioMuted.collectAsStateWithLifecycle()
     val playbackPositionSec by viewModel.playbackPositionSec.collectAsStateWithLifecycle()
     val isPlaying by viewModel.isPlaying.collectAsStateWithLifecycle()
     val activeCut by viewModel.activeCut.collectAsStateWithLifecycle()
     val activeCaption by viewModel.activeCaption.collectAsStateWithLifecycle()
+
+    val editingCut by viewModel.editingCut.collectAsStateWithLifecycle()
+    val editingCaption by viewModel.editingCaption.collectAsStateWithLifecycle()
+    val exportQuality by viewModel.exportQuality.collectAsStateWithLifecycle()
     val exportProgress by viewModel.exportProgress.collectAsStateWithLifecycle()
     val isExported by viewModel.isExported.collectAsStateWithLifecycle()
+    val exportResult by viewModel.exportResult.collectAsStateWithLifecycle()
 
     val totalDuration = currentEditPlan?.estimatedFinalDurationSec ?: 12f
 
@@ -108,23 +113,32 @@ fun VideoEditorScreen(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
-                            Text(
-                                text = "Prompt to Video Studio",
-                                fontSize = 11.sp,
-                                color = AccentElectricCyan
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.HighQuality,
+                                    contentDescription = null,
+                                    tint = AccentElectricCyan,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = "Full HD Studio",
+                                    fontSize = 11.sp,
+                                    color = AccentElectricCyan
+                                )
+                            }
                         }
                     }
                 },
                 actions = {
                     Button(
-                        onClick = { viewModel.startExport() },
+                        onClick = { viewModel.startExport(context) },
                         shape = RoundedCornerShape(20.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = AccentElectricCyan,
                             contentColor = Color(0xFF0F172A)
                         ),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 4.dp),
                         modifier = Modifier
                             .height(34.dp)
                             .testTag("export_video_button")
@@ -136,7 +150,7 @@ fun VideoEditorScreen(
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = "Export",
+                            text = "Export Full HD",
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -164,18 +178,23 @@ fun VideoEditorScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(bottom = 24.dp)
             ) {
-                // 1. Video Player Canvas with live playback, color matrix, aspect ratio & subtitle overlays
+                // 1. Video Player Canvas
                 VideoPlayerCanvas(
                     aspectRatio = aspectRatio,
                     activeFilter = activeFilter,
+                    filterIntensity = filterIntensity,
                     activeCut = activeCut,
                     activeCaption = activeCaption,
                     mediaFiles = mediaFiles,
                     isPlaying = isPlaying,
                     playbackPositionSec = playbackPositionSec,
                     totalDurationSec = totalDuration,
+                    isAudioMuted = isAudioMuted,
                     onTogglePlayPause = { viewModel.togglePlayPause() },
-                    onSeek = { viewModel.seekTo(it) }
+                    onSeek = { viewModel.seekTo(it) },
+                    onToggleMute = { viewModel.toggleAudioMute() },
+                    onSplitAtPlayhead = { viewModel.splitAtPlayhead() },
+                    onEditCaption = { viewModel.openCaptionEditor(it) }
                 )
 
                 // 2. Multi-track visual timeline
@@ -185,10 +204,13 @@ fun VideoEditorScreen(
                     totalDurationSec = totalDuration,
                     activeCut = activeCut,
                     activeCaption = activeCaption,
-                    onSeek = { viewModel.seekTo(it) }
+                    onSeek = { viewModel.seekTo(it) },
+                    onEditCut = { viewModel.openCutEditor(it) },
+                    onEditCaption = { viewModel.openCaptionEditor(it) },
+                    onAddCaptionAtPlayhead = { viewModel.addCaptionAtPlayhead() }
                 )
 
-                // 3. Media Files Manager (Add files option, list clips, clear)
+                // 3. Media Files Manager
                 MediaPickerSection(
                     mediaFiles = mediaFiles,
                     activeClipIndex = activeCut?.clipIndex,
@@ -196,7 +218,6 @@ fun VideoEditorScreen(
                     onRemoveFile = { id -> viewModel.removeMediaItem(id) },
                     onClearAll = { viewModel.clearAllMedia() },
                     onSelectClip = { index ->
-                        // Jump playback to start of this clip
                         val plan = currentEditPlan
                         if (plan != null) {
                             var accum = 0f
@@ -216,20 +237,48 @@ fun VideoEditorScreen(
                     promptText = promptText,
                     aspectRatio = aspectRatio,
                     activeFilter = activeFilter,
+                    filterIntensity = filterIntensity,
                     aiUiState = aiUiState,
                     currentEditPlan = currentEditPlan,
                     onPromptChange = { viewModel.setPrompt(it) },
                     onAspectRatioChange = { viewModel.setAspectRatio(it) },
                     onFilterChange = { viewModel.setFilter(it) },
+                    onFilterIntensityChange = { viewModel.setFilterIntensity(it) },
                     onGenerateEdit = { viewModel.generateAiEdit() }
                 )
             }
 
-            // Export Simulation Modal Dialog
+            // Cut Inspector & Trimming Modal Dialog
+            editingCut?.let { cut ->
+                val clip = mediaFiles.getOrNull(cut.clipIndex)
+                CutEditorDialog(
+                    cut = cut,
+                    maxClipDuration = (clip?.durationSec ?: 15).toFloat(),
+                    onSaveCut = { viewModel.updateCut(it) },
+                    onDeleteCut = { viewModel.deleteCut(it) },
+                    onDismiss = { viewModel.closeCutEditor() }
+                )
+            }
+
+            // Caption Editor Modal Dialog
+            editingCaption?.let { caption ->
+                CaptionEditorDialog(
+                    caption = caption,
+                    onSaveCaption = { viewModel.updateCaption(it) },
+                    onDeleteCaption = { viewModel.deleteCaption(it) },
+                    onDismiss = { viewModel.closeCaptionEditor() }
+                )
+            }
+
+            // Export Simulation & Share Modal Dialog
             ExportDialog(
                 exportProgress = exportProgress,
                 isExported = isExported,
+                exportResult = exportResult,
+                selectedQuality = exportQuality,
                 editPlan = currentEditPlan,
+                onSelectQuality = { viewModel.setExportQuality(it) },
+                onShare = { viewModel.shareExportedVideo(context) },
                 onDismiss = { viewModel.dismissExport() }
             )
         }

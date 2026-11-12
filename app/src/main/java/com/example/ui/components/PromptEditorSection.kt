@@ -74,11 +74,13 @@ fun PromptEditorSection(
     promptText: String,
     aspectRatio: AspectRatio,
     activeFilter: VideoFilter,
+    filterIntensity: Float,
     aiUiState: AiEditUiState,
     currentEditPlan: VideoEditPlan?,
     onPromptChange: (String) -> Unit,
     onAspectRatioChange: (AspectRatio) -> Unit,
     onFilterChange: (VideoFilter) -> Unit,
+    onFilterIntensityChange: (Float) -> Unit,
     onGenerateEdit: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -268,6 +270,31 @@ fun PromptEditorSection(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                     )
                 }
+            }
+        }
+
+        if (activeFilter != VideoFilter.ORIGINAL) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Grade Intensity: ${(filterIntensity * 100).toInt()}%",
+                    fontSize = 11.sp,
+                    color = TextMuted
+                )
+                androidx.compose.material3.Slider(
+                    value = filterIntensity,
+                    onValueChange = onFilterIntensityChange,
+                    valueRange = 0.2f..1.0f,
+                    modifier = Modifier.width(160.dp),
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = PrimaryPurpleLight,
+                        activeTrackColor = PrimaryNeonPurple
+                    )
+                )
             }
         }
 

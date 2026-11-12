@@ -3,22 +3,16 @@ package com.example.ui.components
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.net.Uri
-import android.widget.MediaController
 import android.widget.VideoView
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,26 +23,27 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ContentCut
+import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.FastRewind
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Replay
+import androidx.compose.material.icons.filled.VolumeMute
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material.icons.outlined.AspectRatio
-import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material3.Badge
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,13 +51,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.asComposeColorFilter
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -89,28 +83,36 @@ import java.util.Locale
 fun VideoPlayerCanvas(
     aspectRatio: AspectRatio,
     activeFilter: VideoFilter,
+    filterIntensity: Float,
     activeCut: VideoCut?,
     activeCaption: CaptionOverlay?,
     mediaFiles: List<MediaFileItem>,
     isPlaying: Boolean,
     playbackPositionSec: Float,
     totalDurationSec: Float,
+    isAudioMuted: Boolean,
     onTogglePlayPause: () -> Unit,
     onSeek: (Float) -> Unit,
+    onToggleMute: () -> Unit,
+    onSplitAtPlayhead: () -> Unit,
+    onEditCaption: (CaptionOverlay) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val haptic = LocalHapticFeedback.current
+
     val activeClip = if (activeCut != null && activeCut.clipIndex in mediaFiles.indices) {
         mediaFiles[activeCut.clipIndex]
     } else {
         mediaFiles.firstOrNull()
     }
 
-    // Convert filter parameters into ColorFilter
-    val colorFilter = remember(activeFilter) {
+    // Convert filter parameters into ColorFilter with intensity blend
+    val colorFilter = remember(activeFilter, filterIntensity) {
         val cm = ColorMatrix()
-        cm.setSaturation(activeFilter.saturation)
-        // Adjust contrast
-        val scale = activeFilter.contrast
+        val sat = 1.0f + (activeFilter.saturation - 1.0f) * filterIntensity
+        cm.setSaturation(sat)
+
+        val scale = 1.0f + (activeFilter.contrast - 1.0f) * filterIntensity
         val translate = (-0.5f * scale + 0.5f) * 255f
         val contrastMatrix = floatArrayOf(
             scale, 0f, 0f, 0f, translate,
@@ -133,7 +135,7 @@ fun VideoPlayerCanvas(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(300.dp)
+                .height(310.dp)
                 .background(Color.Black, RoundedCornerShape(16.dp))
                 .border(1.dp, StudioCardBgElevated, RoundedCornerShape(16.dp))
                 .clip(RoundedCornerShape(16.dp)),
@@ -157,15 +159,14 @@ fun VideoPlayerCanvas(
                 // Media Display: User's Video or Photo
                 if (activeClip != null) {
                     if (activeClip.type == MediaType.VIDEO) {
-                        // Native Video Player directly playing user's video URI
                         NativeVideoSurface(
                             videoUri = activeClip.uri,
                             isPlaying = isPlaying,
                             playbackSpeed = activeCut?.playbackSpeed ?: 1f,
+                            isMuted = isAudioMuted,
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        // Image or photo
                         AsyncImage(
                             model = activeClip.uri,
                             contentDescription = activeClip.name,
@@ -185,14 +186,11 @@ fun VideoPlayerCanvas(
                             verticalArrangement = Arrangement.Center,
                             modifier = Modifier.padding(16.dp)
                         ) {
-                            Text(
-                                text = "🎬",
-                                fontSize = 36.sp
-                            )
+                            Text(text = "🎬", fontSize = 38.sp)
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "No Media on Timeline",
-                                fontSize = 14.sp,
+                                text = "Timeline is Empty",
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
@@ -206,14 +204,14 @@ fun VideoPlayerCanvas(
                     }
                 }
 
-                // Aesthetic Filter Glitch/VHS Scanline Overlay for retro filter
+                // Aesthetic Filter Overlays
                 if (activeFilter == VideoFilter.RETRO_VHS) {
                     VhsRetroOverlay()
                 } else if (activeFilter == VideoFilter.NEON_CYBER) {
                     NeonCyberOverlay()
                 }
 
-                // Active Transition Badge (brief notification on scene change)
+                // Top Left: Active Cut & Speed Badge
                 if (activeCut != null) {
                     Box(
                         modifier = Modifier
@@ -221,15 +219,15 @@ fun VideoPlayerCanvas(
                             .padding(8.dp)
                     ) {
                         Surface(
-                            color = Color.Black.copy(alpha = 0.65f),
+                            color = Color.Black.copy(alpha = 0.7f),
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Row(
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp),
+                                modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "🎬 ${activeCut.clipName.take(14)} (${activeCut.playbackSpeed}x)",
+                                    text = "${activeCut.transitionToNext.icon} ${activeCut.clipName.take(12)} (${activeCut.playbackSpeed}x)",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Medium,
                                     color = AccentElectricCyan
@@ -239,11 +237,13 @@ fun VideoPlayerCanvas(
                     }
                 }
 
-                // Filter Tag Badge
-                Box(
+                // Top Right: Filter Badge & Mute Button
+                Row(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .padding(8.dp)
+                        .padding(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
                         color = PrimaryNeonPurple.copy(alpha = 0.85f),
@@ -254,12 +254,27 @@ fun VideoPlayerCanvas(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color.White,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                            .clickable { onToggleMute() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isAudioMuted) Icons.Default.VolumeMute else Icons.Default.VolumeUp,
+                            contentDescription = if (isAudioMuted) "Unmute" else "Mute",
+                            tint = if (isAudioMuted) AccentNeonPink else AccentElectricCyan,
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
 
-                // Live Captions Overlay
+                // Live Captions Overlay with tap-to-edit
                 if (activeCaption != null) {
                     Box(
                         modifier = Modifier
@@ -270,18 +285,19 @@ fun VideoPlayerCanvas(
                                     else -> Alignment.BottomCenter
                                 }
                             )
-                            .padding(horizontal = 16.dp, vertical = 24.dp)
+                            .padding(horizontal = 16.dp, vertical = 22.dp)
+                            .clickable { onEditCaption(activeCaption) }
                     ) {
                         CaptionBubble(caption = activeCaption)
                     }
                 }
 
                 // Center Play Button Overlay when paused
-                if (!isPlaying) {
+                if (!isPlaying && mediaFiles.isNotEmpty()) {
                     Box(
                         modifier = Modifier
-                            .size(56.dp)
-                            .background(Color.Black.copy(alpha = 0.6f), CircleShape)
+                            .size(54.dp)
+                            .background(Color.Black.copy(alpha = 0.65f), CircleShape)
                             .border(1.5.dp, PrimaryNeonPurple, CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
@@ -289,7 +305,7 @@ fun VideoPlayerCanvas(
                             imageVector = Icons.Default.PlayArrow,
                             contentDescription = "Play Video",
                             tint = Color.White,
-                            modifier = Modifier.size(36.dp)
+                            modifier = Modifier.size(34.dp)
                         )
                     }
                 }
@@ -304,6 +320,19 @@ fun VideoPlayerCanvas(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            // Step Back -2s
+            IconButton(
+                onClick = { onSeek((playbackPositionSec - 2f).coerceAtLeast(0f)) },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FastRewind,
+                    contentDescription = "Rewind 2s",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
             // Play / Pause Button
             IconButton(
                 onClick = onTogglePlayPause,
@@ -319,13 +348,28 @@ fun VideoPlayerCanvas(
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            // Step Forward +2s
+            IconButton(
+                onClick = { onSeek((playbackPositionSec + 2f).coerceAtMost(totalDurationSec)) },
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.FastForward,
+                    contentDescription = "Fast Forward 2s",
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
 
             // Time Slider
             Column(modifier = Modifier.weight(1f)) {
                 Slider(
                     value = playbackPositionSec.coerceIn(0f, totalDurationSec.coerceAtLeast(1f)),
-                    onValueChange = { onSeek(it) },
+                    onValueChange = {
+                        onSeek(it)
+                    },
                     valueRange = 0f..totalDurationSec.coerceAtLeast(1f),
                     colors = SliderDefaults.colors(
                         thumbColor = AccentElectricCyan,
@@ -339,17 +383,33 @@ fun VideoPlayerCanvas(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = formatTime(playbackPositionSec),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = Color.White,
                         fontWeight = FontWeight.SemiBold
                     )
+
+                    // Audio playing waveform indicator
+                    if (isPlaying && !isAudioMuted) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.GraphicEq,
+                                contentDescription = null,
+                                tint = AccentElectricCyan,
+                                modifier = Modifier.size(12.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(text = "Audio Track", fontSize = 9.sp, color = AccentElectricCyan)
+                        }
+                    }
+
                     Text(
                         text = formatTime(totalDurationSec),
-                        fontSize = 12.sp,
+                        fontSize = 11.sp,
                         color = Color.Gray
                     )
                 }
@@ -357,24 +417,25 @@ fun VideoPlayerCanvas(
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Aspect Ratio badge
+            // Split Cut Tool button
             Surface(
                 color = StudioCardBgElevated,
-                shape = RoundedCornerShape(8.dp)
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier.clickable { onSplitAtPlayhead() }
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        imageVector = Icons.Outlined.AspectRatio,
-                        contentDescription = "Aspect Ratio",
+                        imageVector = Icons.Default.ContentCut,
+                        contentDescription = "Split Clip",
                         tint = AccentElectricCyan,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(14.dp)
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Text(
-                        text = aspectRatio.iconLabel,
+                        text = "Split",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -387,23 +448,25 @@ fun VideoPlayerCanvas(
 
 @Composable
 private fun CaptionBubble(caption: CaptionOverlay) {
+    val highlightColor = try {
+        Color(android.graphics.Color.parseColor(caption.highlightColorHex))
+    } catch (_: Exception) {
+        Color(0xFFFFDE59)
+    }
+
     Surface(
-        color = Color.Black.copy(alpha = 0.8f),
+        color = Color.Black.copy(alpha = 0.82f),
         shape = RoundedCornerShape(8.dp),
-        shadowElevation = 4.dp,
-        modifier = Modifier.border(1.dp, PrimaryNeonPurple.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+        shadowElevation = 6.dp,
+        modifier = Modifier.border(1.2.dp, highlightColor.copy(alpha = 0.7f), RoundedCornerShape(8.dp))
     ) {
         Text(
             text = caption.text,
-            color = try {
-                Color(android.graphics.Color.parseColor(caption.highlightColorHex))
-            } catch (_: Exception) {
-                Color(0xFFFFDE59)
-            },
+            color = highlightColor,
             fontWeight = FontWeight.ExtraBold,
             fontSize = 15.sp,
             textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
         )
     }
 }
@@ -413,19 +476,19 @@ private fun VhsRetroOverlay() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0x15FF0055)),
+            .background(Color(0x18FF0055)),
         verticalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = "REC ● [SP] 00:26:14",
-            color = Color.Green.copy(alpha = 0.8f),
+            color = Color.Green.copy(alpha = 0.85f),
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(8.dp)
         )
         Text(
-            text = "PLAY ► VHS HI-FI",
-            color = Color.White.copy(alpha = 0.7f),
+            text = "PLAY ► VHS HI-FI STEREO",
+            color = Color.White.copy(alpha = 0.75f),
             fontSize = 10.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier
@@ -457,6 +520,7 @@ private fun NativeVideoSurface(
     videoUri: Uri,
     isPlaying: Boolean,
     playbackSpeed: Float,
+    isMuted: Boolean,
     modifier: Modifier = Modifier
 ) {
     var videoViewRef by remember { mutableStateOf<VideoView?>(null) }
@@ -464,34 +528,48 @@ private fun NativeVideoSurface(
     AndroidView(
         factory = { ctx ->
             VideoView(ctx).apply {
-                setVideoURI(videoUri)
-                setOnPreparedListener { mp ->
-                    mp.isLooping = true
-                    try {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                            mp.playbackParams = mp.playbackParams.setSpeed(playbackSpeed.coerceIn(0.5f, 2.0f))
+                try {
+                    setVideoURI(videoUri)
+                    setOnPreparedListener { mp ->
+                        mp.isLooping = true
+                        if (isMuted) {
+                            mp.setVolume(0f, 0f)
+                        } else {
+                            mp.setVolume(1f, 1f)
                         }
-                    } catch (_: Exception) {}
-                    if (isPlaying) {
-                        start()
+                        try {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                                mp.playbackParams = mp.playbackParams.setSpeed(playbackSpeed.coerceIn(0.25f, 3.0f))
+                            }
+                        } catch (_: Exception) {}
+                        if (isPlaying) {
+                            start()
+                        }
                     }
-                }
+                    setOnErrorListener { _, _, _ ->
+                        true // Suppress default error dialog and handle gracefully
+                    }
+                } catch (_: Exception) {}
                 videoViewRef = this
             }
         },
         update = { vv ->
-            if (isPlaying && !vv.isPlaying) {
-                vv.start()
-            } else if (!isPlaying && vv.isPlaying) {
-                vv.pause()
-            }
+            try {
+                if (isPlaying && !vv.isPlaying) {
+                    vv.start()
+                } else if (!isPlaying && vv.isPlaying) {
+                    vv.pause()
+                }
+            } catch (_: Exception) {}
         },
         modifier = modifier
     )
 
     DisposableEffect(videoUri) {
         onDispose {
-            videoViewRef?.stopPlayback()
+            try {
+                videoViewRef?.stopPlayback()
+            } catch (_: Exception) {}
         }
     }
 }

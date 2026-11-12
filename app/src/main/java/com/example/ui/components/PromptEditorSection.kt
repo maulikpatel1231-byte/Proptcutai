@@ -53,7 +53,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.SampleMediaProvider
+import com.example.data.PromptPresets
 import com.example.model.AiEditUiState
 import com.example.model.AspectRatio
 import com.example.model.VideoEditPlan
@@ -168,7 +168,7 @@ fun PromptEditorSection(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             contentPadding = PaddingValues(vertical = 2.dp)
         ) {
-            items(SampleMediaProvider.promptSuggestions) { suggestion ->
+            items(PromptPresets.promptSuggestions) { suggestion ->
                 val title = suggestion.substringBefore(":")
                 Surface(
                     color = StudioCardBg,

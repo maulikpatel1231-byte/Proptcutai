@@ -182,23 +182,28 @@ fun ExportDialog(
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(text = "Format", fontSize = 11.sp, color = TextMuted)
-                                Text(text = "MP4 / H.264", fontSize = 11.sp, color = Color.White)
+                                Text(text = "MP4 / H.264 (AAC Audio)", fontSize = 11.sp, color = Color.White)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(text = "Resolution", fontSize = 11.sp, color = TextMuted)
-                                Text(text = "1080x1920 (Full HD)", fontSize = 11.sp, color = Color.White)
+                                Text(text = "Quality", fontSize = 11.sp, color = TextMuted)
+                                Text(text = "Full HD (1080p)", fontSize = 11.sp, color = AccentElectricCyan, fontWeight = FontWeight.Bold)
                             }
                             Spacer(modifier = Modifier.height(4.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(text = "Framerate", fontSize = 11.sp, color = TextMuted)
-                                Text(text = "60 FPS", fontSize = 11.sp, color = Color.White)
+                                Text(text = "Dimensions", fontSize = 11.sp, color = TextMuted)
+                                val dims = when (editPlan?.aspectRatio) {
+                                    com.example.model.AspectRatio.LANDSCAPE_16_9 -> "1920 x 1080"
+                                    com.example.model.AspectRatio.SQUARE_1_1 -> "1080 x 1080"
+                                    else -> "1080 x 1920"
+                                }
+                                Text(text = "$dims • 60 FPS", fontSize = 11.sp, color = Color.White)
                             }
                         }
                     }

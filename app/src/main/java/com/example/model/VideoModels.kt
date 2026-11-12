@@ -13,8 +13,6 @@ data class MediaFileItem(
     val uri: Uri,
     val type: MediaType = MediaType.VIDEO,
     val durationSec: Int = 10,
-    val isSample: Boolean = false,
-    val sampleVideoUrl: String? = null,
     val resolutionLabel: String = "1080p",
     val description: String = ""
 )

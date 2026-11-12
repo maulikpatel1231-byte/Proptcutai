@@ -7,7 +7,6 @@ import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.ai.AiVideoDirector
-import com.example.data.SampleMediaProvider
 import com.example.model.AiEditUiState
 import com.example.model.AspectRatio
 import com.example.model.CaptionOverlay
@@ -35,12 +34,12 @@ class VideoEditorViewModel : ViewModel() {
 
     private val aiDirector = AiVideoDirector()
 
-    // 1. Media Files added by user or preloaded samples
-    private val _mediaFiles = MutableStateFlow<List<MediaFileItem>>(SampleMediaProvider.sampleVideos)
+    // 1. Media Files added by user (Starts empty - no sample or dummy videos)
+    private val _mediaFiles = MutableStateFlow<List<MediaFileItem>>(emptyList())
     val mediaFiles: StateFlow<List<MediaFileItem>> = _mediaFiles.asStateFlow()
 
     // 2. User Prompt & Aspect Ratio
-    private val _promptText = MutableStateFlow("Make a cinematic reel with high contrast, pop subtitles, and fast jump cuts")
+    private val _promptText = MutableStateFlow("Make a cinematic vlog with smooth cuts, warm film filter, and pop subtitles")
     val promptText: StateFlow<String> = _promptText.asStateFlow()
 
     private val _aspectRatio = MutableStateFlow(AspectRatio.PORTRAIT_9_16)
@@ -54,7 +53,7 @@ class VideoEditorViewModel : ViewModel() {
     val currentEditPlan: StateFlow<VideoEditPlan?> = _currentEditPlan.asStateFlow()
 
     // 4. Overridden active filter (allows manual fine-tuning after AI suggests one)
-    private val _activeFilter = MutableStateFlow(VideoFilter.CINEMATIC_WARM)
+    private val _activeFilter = MutableStateFlow(VideoFilter.ORIGINAL)
     val activeFilter: StateFlow<VideoFilter> = _activeFilter.asStateFlow()
 
     // 5. Playback & Timeline State
@@ -82,7 +81,7 @@ class VideoEditorViewModel : ViewModel() {
         plan?.captions?.firstOrNull { pos >= it.startTimeSec && pos <= it.endTimeSec }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // 6. Export State
+    // 6. Export State (Full HD 1080p 60FPS)
     private val _exportProgress = MutableStateFlow<Float?>(null)
     val exportProgress: StateFlow<Float?> = _exportProgress.asStateFlow()
 
@@ -90,81 +89,6 @@ class VideoEditorViewModel : ViewModel() {
     val isExported: StateFlow<Boolean> = _isExported.asStateFlow()
 
     private var playbackJob: Job? = null
-
-    init {
-        // Generate an initial edit plan with default samples so user sees a ready-to-play video right away
-        generateInitialDefaultPlan()
-    }
-
-    private fun generateInitialDefaultPlan() {
-        val initialPlan = VideoEditPlan(
-            title = "Cinematic Coast & Neon Lights",
-            creativeSummary = "Paced montage contrasting serene golden coastal sunset with electrifying Tokyo neon vibes.",
-            directorsRationale = "Cut 1 starts wide on the drone ocean shot to establish scale. Jump cut to neon Tokyo street reflections creates vibrant juxtaposition. High-contrast Cinematic Warm grade binds the lighting together.",
-            filter = VideoFilter.CINEMATIC_WARM,
-            aspectRatio = AspectRatio.PORTRAIT_9_16,
-            cuts = listOf(
-                VideoCut(
-                    id = "init_0",
-                    clipIndex = 0,
-                    clipName = SampleMediaProvider.sampleVideos[0].name,
-                    startTimeSec = 0f,
-                    endTimeSec = 4.5f,
-                    playbackSpeed = 1.0f,
-                    transitionToNext = TransitionType.ZOOM_IN,
-                    actionDescription = "Golden ocean horizon establishing shot"
-                ),
-                VideoCut(
-                    id = "init_1",
-                    clipIndex = 1,
-                    clipName = SampleMediaProvider.sampleVideos[1].name,
-                    startTimeSec = 2f,
-                    endTimeSec = 6.5f,
-                    playbackSpeed = 1.2f,
-                    transitionToNext = TransitionType.GLITCH_TRANSITION,
-                    actionDescription = "Cyberpunk neon street traffic reflections"
-                ),
-                VideoCut(
-                    id = "init_2",
-                    clipIndex = 2,
-                    clipName = SampleMediaProvider.sampleVideos[2].name,
-                    startTimeSec = 1f,
-                    endTimeSec = 5f,
-                    playbackSpeed = 1.5f,
-                    transitionToNext = TransitionType.FADE_BLACK,
-                    actionDescription = "High speed halfpipe jump climax"
-                )
-            ),
-            captions = listOf(
-                CaptionOverlay(
-                    id = "c_0",
-                    text = "GOLDEN HORIZON ✨",
-                    startTimeSec = 0.5f,
-                    endTimeSec = 3.5f,
-                    highlightColorHex = "#FFD700"
-                ),
-                CaptionOverlay(
-                    id = "c_1",
-                    text = "NEON DREAMS IN MOTION 🔥",
-                    startTimeSec = 4.6f,
-                    endTimeSec = 8.0f,
-                    highlightColorHex = "#00FFFF"
-                ),
-                CaptionOverlay(
-                    id = "c_2",
-                    text = "PURE ADRENALINE ⚡",
-                    startTimeSec = 8.5f,
-                    endTimeSec = 11.5f,
-                    highlightColorHex = "#FF3366"
-                )
-            ),
-            backgroundMusicMood = "Synthwave Pulse 128 BPM",
-            soundEffects = listOf("Whoosh Transition", "Bass Drop", "Vinyl Tape Stop"),
-            estimatedFinalDurationSec = 12f
-        )
-        _currentEditPlan.value = initialPlan
-        _activeFilter.value = initialPlan.filter
-    }
 
     fun setPrompt(text: String) {
         _promptText.value = text
@@ -180,14 +104,14 @@ class VideoEditorViewModel : ViewModel() {
 
     fun addMediaUris(context: Context, uris: List<Uri>) {
         val newItems = uris.map { uri ->
-            var displayName = "User_Clip_${System.currentTimeMillis() % 10000}.mp4"
+            var displayName = "Media_${System.currentTimeMillis() % 10000}.mp4"
             var isVideo = true
 
             try {
                 val mime = context.contentResolver.getType(uri) ?: ""
                 if (mime.startsWith("image/")) {
                     isVideo = false
-                    displayName = "User_Photo_${System.currentTimeMillis() % 10000}.jpg"
+                    displayName = "Photo_${System.currentTimeMillis() % 10000}.jpg"
                 }
 
                 context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -205,22 +129,68 @@ class VideoEditorViewModel : ViewModel() {
                 name = displayName,
                 uri = uri,
                 type = if (isVideo) MediaType.VIDEO else MediaType.IMAGE,
-                durationSec = if (isVideo) 10 else 4,
-                isSample = false,
-                resolutionLabel = if (isVideo) "HD Clip" else "Photo",
+                durationSec = if (isVideo) 8 else 4,
+                resolutionLabel = if (isVideo) "Full HD 1080p" else "Photo",
                 description = "User added file: $displayName"
             )
         }
 
-        _mediaFiles.value = _mediaFiles.value + newItems
+        val updatedFiles = _mediaFiles.value + newItems
+        _mediaFiles.value = updatedFiles
+
+        // Build or update working timeline with the user's added files
+        buildWorkingTimeline(updatedFiles)
+    }
+
+    private fun buildWorkingTimeline(files: List<MediaFileItem>) {
+        if (files.isEmpty()) {
+            _currentEditPlan.value = null
+            _playbackPositionSec.value = 0f
+            return
+        }
+
+        val cuts = files.mapIndexed { index, file ->
+            VideoCut(
+                id = "cut_$index",
+                clipIndex = index,
+                clipName = file.name,
+                startTimeSec = 0f,
+                endTimeSec = file.durationSec.toFloat(),
+                playbackSpeed = 1.0f,
+                transitionToNext = TransitionType.CROSS_DISSOLVE,
+                actionDescription = "Scene from ${file.name}"
+            )
+        }
+
+        val totalDuration = cuts.sumOf { it.durationSec.toDouble() }.toFloat().coerceAtLeast(3f)
+
+        // Only override if no AI plan yet or if files changed
+        val existingPlan = _currentEditPlan.value
+        _currentEditPlan.value = VideoEditPlan(
+            title = existingPlan?.title ?: "User Project (${files.size} items)",
+            creativeSummary = existingPlan?.creativeSummary ?: "Timeline ready for AI editing.",
+            directorsRationale = existingPlan?.directorsRationale ?: "Add a prompt above and tap 'AI Edit Video' to automatically cut, grade, and caption this video.",
+            filter = _activeFilter.value,
+            aspectRatio = _aspectRatio.value,
+            cuts = cuts,
+            captions = existingPlan?.captions ?: emptyList(),
+            backgroundMusicMood = existingPlan?.backgroundMusicMood ?: "Natural Sound",
+            soundEffects = existingPlan?.soundEffects ?: emptyList(),
+            estimatedFinalDurationSec = totalDuration
+        )
     }
 
     fun removeMediaItem(id: String) {
-        _mediaFiles.value = _mediaFiles.value.filter { it.id != id }
+        val updated = _mediaFiles.value.filter { it.id != id }
+        _mediaFiles.value = updated
+        buildWorkingTimeline(updated)
     }
 
-    fun resetToSampleFiles() {
-        _mediaFiles.value = SampleMediaProvider.sampleVideos
+    fun clearAllMedia() {
+        _mediaFiles.value = emptyList()
+        _currentEditPlan.value = null
+        _playbackPositionSec.value = 0f
+        pausePlayback()
     }
 
     fun generateAiEdit() {
@@ -228,7 +198,7 @@ class VideoEditorViewModel : ViewModel() {
         val files = _mediaFiles.value
 
         if (files.isEmpty()) {
-            _aiUiState.value = AiEditUiState.Error("Please add at least one video or photo first.")
+            _aiUiState.value = AiEditUiState.Error("Please add video or photo files to the timeline first.")
             return
         }
 
@@ -238,7 +208,7 @@ class VideoEditorViewModel : ViewModel() {
         }
 
         viewModelScope.launch {
-            _aiUiState.value = AiEditUiState.Analyzing("Analyzing clips and edit prompt with Gemini 3.8 Flash...")
+            _aiUiState.value = AiEditUiState.Analyzing("AI Director is analyzing your clips and applying cuts according to prompt...")
             pausePlayback()
 
             try {
@@ -272,13 +242,13 @@ class VideoEditorViewModel : ViewModel() {
 
     fun seekTo(seconds: Float) {
         val plan = _currentEditPlan.value ?: return
-        val maxDuration = plan.estimatedFinalDurationSec.coerceAtLeast(3f)
+        val maxDuration = plan.estimatedFinalDurationSec.coerceAtLeast(1f)
         _playbackPositionSec.value = seconds.coerceIn(0f, maxDuration)
     }
 
     private fun startPlayback() {
         val plan = _currentEditPlan.value ?: return
-        val maxDuration = plan.estimatedFinalDurationSec.coerceAtLeast(3f)
+        val maxDuration = plan.estimatedFinalDurationSec.coerceAtLeast(1f)
 
         if (_playbackPositionSec.value >= maxDuration) {
             _playbackPositionSec.value = 0f
@@ -307,17 +277,21 @@ class VideoEditorViewModel : ViewModel() {
     }
 
     fun startExport() {
+        if (_mediaFiles.value.isEmpty()) {
+            _aiUiState.value = AiEditUiState.Error("Add media files before exporting.")
+            return
+        }
         pausePlayback()
         _isExported.value = false
         viewModelScope.launch {
             _exportProgress.value = 0.05f
-            val totalSteps = 20
+            val totalSteps = 25
             for (i in 1..totalSteps) {
-                delay(120)
+                delay(100)
                 _exportProgress.value = (i.toFloat() / totalSteps)
             }
             _exportProgress.value = 1.0f
-            delay(300)
+            delay(200)
             _isExported.value = true
         }
     }

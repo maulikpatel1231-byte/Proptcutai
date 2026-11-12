@@ -188,13 +188,13 @@ fun VideoEditorScreen(
                     onSeek = { viewModel.seekTo(it) }
                 )
 
-                // 3. Media Files Manager (Add files option, list clips, reset samples)
+                // 3. Media Files Manager (Add files option, list clips, clear)
                 MediaPickerSection(
                     mediaFiles = mediaFiles,
                     activeClipIndex = activeCut?.clipIndex,
                     onAddFiles = { uris -> viewModel.addMediaUris(context, uris) },
                     onRemoveFile = { id -> viewModel.removeMediaItem(id) },
-                    onLoadSamplePack = { viewModel.resetToSampleFiles() },
+                    onClearAll = { viewModel.clearAllMedia() },
                     onSelectClip = { index ->
                         // Jump playback to start of this clip
                         val plan = currentEditPlan

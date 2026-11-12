@@ -82,6 +82,7 @@ import com.example.ui.theme.AccentNeonPink
 import com.example.ui.theme.PrimaryNeonPurple
 import com.example.ui.theme.StudioCardBgElevated
 import com.example.ui.theme.StudioDarkBg
+import com.example.ui.theme.TextMuted
 import java.util.Locale
 
 @Composable
@@ -153,18 +154,18 @@ fun VideoPlayerCanvas(
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Media Display: VideoView or AsyncImage
+                // Media Display: User's Video or Photo
                 if (activeClip != null) {
-                    if (activeClip.type == MediaType.VIDEO && activeClip.sampleVideoUrl != null) {
-                        // Native Video Player
+                    if (activeClip.type == MediaType.VIDEO) {
+                        // Native Video Player directly playing user's video URI
                         NativeVideoSurface(
-                            videoUri = Uri.parse(activeClip.sampleVideoUrl),
+                            videoUri = activeClip.uri,
                             isPlaying = isPlaying,
                             playbackSpeed = activeCut?.playbackSpeed ?: 1f,
                             modifier = Modifier.fillMaxSize()
                         )
-                    } else if (activeClip.type == MediaType.IMAGE || activeClip.uri != null) {
-                        // Image or static preview
+                    } else {
+                        // Image or photo
                         AsyncImage(
                             model = activeClip.uri,
                             contentDescription = activeClip.name,
@@ -172,6 +173,36 @@ fun VideoPlayerCanvas(
                             colorFilter = colorFilter,
                             modifier = Modifier.fillMaxSize()
                         )
+                    }
+                } else {
+                    // Empty state when no media files are added
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(16.dp)
+                        ) {
+                            Text(
+                                text = "🎬",
+                                fontSize = 36.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "No Media on Timeline",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Tap '+ Add Videos & Photos' below",
+                                fontSize = 11.sp,
+                                color = TextMuted
+                            )
+                        }
                     }
                 }
 

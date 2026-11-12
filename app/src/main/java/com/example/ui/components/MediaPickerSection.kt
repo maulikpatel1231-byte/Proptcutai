@@ -24,27 +24,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Photo
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -54,7 +51,7 @@ import coil.compose.AsyncImage
 import com.example.model.MediaFileItem
 import com.example.model.MediaType
 import com.example.ui.theme.AccentElectricCyan
-import com.example.ui.theme.AccentNeonPink
+import com.example.ui.theme.AccentRed
 import com.example.ui.theme.PrimaryNeonPurple
 import com.example.ui.theme.StudioCardBg
 import com.example.ui.theme.StudioCardBgElevated
@@ -67,13 +64,11 @@ fun MediaPickerSection(
     activeClipIndex: Int?,
     onAddFiles: (List<android.net.Uri>) -> Unit,
     onRemoveFile: (String) -> Unit,
-    onLoadSamplePack: () -> Unit,
+    onClearAll: () -> Unit,
     onSelectClip: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-
-    // Modern Zero-Permission Photo/Video Picker
+    // Zero-Permission Modern Photo/Video Picker
     val mediaPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickMultipleVisualMedia()
     ) { uris ->
@@ -95,7 +90,7 @@ fun MediaPickerSection(
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    text = "📁 Media Files",
+                    text = "📁 Media Timeline",
                     fontSize = 15.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
@@ -106,7 +101,7 @@ fun MediaPickerSection(
                     shape = CircleShape
                 ) {
                     Text(
-                        text = "${mediaFiles.size} clips",
+                        text = "${mediaFiles.size} items",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = PrimaryNeonPurple,
@@ -115,27 +110,22 @@ fun MediaPickerSection(
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                // Reset to samples button
-                OutlinedButton(
-                    onClick = onLoadSamplePack,
-                    shape = RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("samples_pack_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Outlined.AutoAwesome,
-                        contentDescription = "Sample Pack",
-                        modifier = Modifier.size(14.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(text = "Samples", fontSize = 11.sp)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                if (mediaFiles.isNotEmpty()) {
+                    IconButton(
+                        onClick = onClearAll,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.DeleteSweep,
+                            contentDescription = "Clear All",
+                            tint = AccentRed.copy(alpha = 0.8f),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
 
-                // Add File Button
+                // Add Button (Primary Action)
                 Button(
                     onClick = {
                         mediaPickerLauncher.launch(
@@ -147,19 +137,19 @@ fun MediaPickerSection(
                         containerColor = PrimaryNeonPurple,
                         contentColor = Color.White
                     ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                     modifier = Modifier
-                        .height(34.dp)
+                        .height(36.dp)
                         .testTag("add_media_file_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "Add Files",
-                        modifier = Modifier.size(16.dp)
+                        contentDescription = "Add Videos & Photos",
+                        modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "Add Files",
+                        text = "Add Videos & Photos",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -169,37 +159,55 @@ fun MediaPickerSection(
 
         Spacer(modifier = Modifier.height(10.dp))
 
-        // Horizontal clip row
+        // When empty: Large, inviting Add Media CTA
         if (mediaFiles.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(96.dp)
-                    .background(StudioCardBg, RoundedCornerShape(12.dp))
-                    .border(1.dp, StudioCardBgElevated, RoundedCornerShape(12.dp))
+                    .height(110.dp)
+                    .background(StudioCardBg, RoundedCornerShape(14.dp))
+                    .border(1.5.dp, StudioCardBgElevated, RoundedCornerShape(14.dp))
                     .clickable {
                         mediaPickerLauncher.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)
                         )
-                    },
+                    }
+                    .testTag("empty_add_media_card"),
                 contentAlignment = Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "Add files",
-                        tint = AccentElectricCyan,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(42.dp)
+                            .background(PrimaryNeonPurple.copy(alpha = 0.2f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AddPhotoAlternate,
+                            contentDescription = "Add Media",
+                            tint = AccentElectricCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "No media files added. Tap to add videos or photos.",
-                        fontSize = 12.sp,
+                        text = "Tap to Add Videos & Photos to Timeline",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "Supports MP4, MOV, JPG, PNG from device",
+                        fontSize = 11.sp,
                         color = TextMuted
                     )
                 }
             }
         } else {
+            // Horizontal list of added clips
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(vertical = 4.dp)
@@ -228,7 +236,7 @@ private fun MediaClipCard(
 ) {
     Card(
         modifier = Modifier
-            .width(130.dp)
+            .width(135.dp)
             .height(105.dp)
             .border(
                 width = if (isActive) 2.dp else 1.dp,
@@ -240,29 +248,13 @@ private fun MediaClipCard(
         colors = CardDefaults.cardColors(containerColor = StudioCardBg)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Background image preview or icon
-            if (item.uri != null) {
-                AsyncImage(
-                    model = item.uri,
-                    contentDescription = item.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(StudioCardBgElevated),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (item.type == MediaType.VIDEO) Icons.Default.Movie else Icons.Default.Photo,
-                        contentDescription = item.type.name,
-                        tint = TextSecondary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
+            // Thumbnail
+            AsyncImage(
+                model = item.uri,
+                contentDescription = item.name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
 
             // Dark gradient scrim
             Box(
@@ -271,7 +263,7 @@ private fun MediaClipCard(
                     .background(Color.Black.copy(alpha = 0.45f))
             )
 
-            // Top Badges (Index & Remove)
+            // Top row: Index tag & Delete button
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -308,7 +300,7 @@ private fun MediaClipCard(
                 }
             }
 
-            // Bottom Labels (Duration & Name)
+            // Bottom metadata
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)

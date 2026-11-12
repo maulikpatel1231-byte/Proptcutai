@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import com.example.BuildConfig
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 import com.google.firebase.appcheck.recaptcha.RecaptchaAppCheckProviderFactory
@@ -17,19 +18,61 @@ private const val DEBUG_STORE_PREFIX = "com.google.firebase.appcheck.debug.store
 private const val DEBUG_SECRET_KEY = "com.google.firebase.appcheck.debug.DEBUG_SECRET"
 private const val RECAPTCHA_SITE_KEY_RES = "recaptcha_site_key"
 
+/**
+ * Ensures FirebaseApp is reliably initialized in this process.
+ * First tries standard resource-based initialization, and if that fails or returns null,
+ * falls back to explicit FirebaseOptions from the provisioned project configuration.
+ */
+fun ensureFirebaseInitialized(context: Context): FirebaseApp {
+    if (FirebaseApp.getApps(context).isNotEmpty()) {
+        return FirebaseApp.getInstance()
+    }
+
+    // 1. Try standard automatic initialization
+    try {
+        val app = FirebaseApp.initializeApp(context)
+        if (app != null) {
+            Log.d(TAG, "FirebaseApp successfully initialized from resources.")
+            return app
+        }
+    } catch (e: Exception) {
+        Log.w(TAG, "Standard FirebaseApp.initializeApp returned exception, using explicit fallback options", e)
+    }
+
+    // 2. Explicit options fallback guaranteeing initialization in all environments (CI builds, APKs, emulators)
+    val options = FirebaseOptions.Builder()
+        .setApplicationId("1:529705054152:android:e9e6c374a091fe017c5afd")
+        .setApiKey("AIzaSyA8e8nEtFJDLkAITDURhHdca6aonjqq6-4")
+        .setProjectId("gen-lang-client-0080109122")
+        .setGcmSenderId("529705054152")
+        .setStorageBucket("gen-lang-client-0080109122.firebasestorage.app")
+        .build()
+
+    return try {
+        val app = FirebaseApp.initializeApp(context.applicationContext, options)
+        Log.d(TAG, "FirebaseApp successfully initialized with explicit options.")
+        app
+    } catch (e: Exception) {
+        Log.e(TAG, "Explicit FirebaseApp.initializeApp failed", e)
+        if (FirebaseApp.getApps(context).isNotEmpty()) {
+            FirebaseApp.getInstance()
+        } else {
+            throw e
+        }
+    }
+}
+
 fun configureAppCheck(context: Context, intent: Intent?) {
     try {
-        // 1. Ensure FirebaseApp is initialized
-        if (FirebaseApp.getApps(context).isEmpty()) {
-            FirebaseApp.initializeApp(context)
-        }
+        // 1. Ensure FirebaseApp is fully initialized before App Check operations
+        val app = ensureFirebaseInitialized(context)
 
         if (BuildConfig.DEBUG) {
             // 2. Debug: Read debug token from Intent extra
             val debugToken = intent?.getStringExtra(DEBUG_TOKEN_EXTRA)
 
             if (!debugToken.isNullOrEmpty()) {
-                val persistenceKey = FirebaseApp.getInstance().persistenceKey
+                val persistenceKey = app.persistenceKey
                 val prefs = context.getSharedPreferences(
                     "$DEBUG_STORE_PREFIX$persistenceKey",
                     Context.MODE_PRIVATE

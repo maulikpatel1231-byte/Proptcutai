@@ -11,7 +11,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // STEP 1: Mandatory App Check initialization with launch intent before any UI or Firebase operations
+        // STEP 1: Mandatory FirebaseApp and App Check initialization before any UI or Firebase operations
+        ensureFirebaseInitialized(this)
         configureAppCheck(this, intent)
 
         // STEP 2: Edge-to-edge system insets

@@ -14,6 +14,8 @@ data class MediaFileItem(
     val type: MediaType = MediaType.VIDEO,
     val durationSec: Int = 10,
     val resolutionLabel: String = "1080p",
+    val width: Int = 1080,
+    val height: Int = 1920,
     val description: String = ""
 )
 
@@ -87,9 +89,9 @@ data class VideoCut(
 }
 
 enum class ExportQuality(val displayName: String, val resolution: String, val bitrate: String) {
-    FULL_HD_1080P("Full HD 1080p", "1080x1920", "16 Mbps"),
-    ULTRA_HD_4K("4K Ultra HD", "2160x3840", "45 Mbps"),
-    HD_720P("HD 720p (Fast)", "720x1280", "8 Mbps")
+    FULL_HD_1080P("Full HD 1080p", "1080x1920", "12 Mbps"),
+    ULTRA_HD_4K("4K Ultra HD", "2160x3840", "24 Mbps"),
+    HD_720P("HD 720p (Fast)", "720x1280", "6 Mbps")
 }
 
 data class VideoEditPlan(
@@ -105,7 +107,8 @@ data class VideoEditPlan(
     val soundEffects: List<String> = emptyList(),
     val estimatedFinalDurationSec: Float = 15f,
     val isAudioMuted: Boolean = false,
-    val audioVolume: Float = 0.85f
+    val audioVolume: Float = 0.85f,
+    val isAiGenerated: Boolean = false
 )
 
 sealed interface AiEditUiState {

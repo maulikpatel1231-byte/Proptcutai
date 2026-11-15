@@ -323,6 +323,8 @@ fun PromptEditorSection(
                 .testTag("generate_edit_button")
         ) {
             if (isGenerating) {
+                val statusMsg = (aiUiState as? AiEditUiState.Analyzing)?.stepMessage
+                    ?: "AI Video Director is Editing..."
                 CircularProgressIndicator(
                     color = Color.White,
                     strokeWidth = 2.5.dp,
@@ -330,8 +332,8 @@ fun PromptEditorSection(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = "AI Video Director is Editing...",
-                    fontSize = 14.sp,
+                    text = statusMsg.take(36),
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
             } else {
@@ -351,19 +353,30 @@ fun PromptEditorSection(
 
         // Error Banner if AI failed
         if (aiUiState is AiEditUiState.Error) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Surface(
                 color = Color(0x33EF4444),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(10.dp),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444)),
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("ai_error_banner")
             ) {
-                Text(
-                    text = "⚠️ " + aiUiState.message,
-                    color = Color(0xFFFCA5A5),
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(10.dp)
-                )
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "AI Edit Failed",
+                        color = Color(0xFFFCA5A5),
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = aiUiState.message,
+                        color = Color(0xFFFECACA),
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
+                }
             }
         }
 

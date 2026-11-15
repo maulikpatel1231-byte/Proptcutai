@@ -1,12 +1,6 @@
 package com.example.ui.components
 
-import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,8 +15,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -33,12 +27,13 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -51,22 +46,25 @@ import com.example.ui.theme.StudioCardBg
 import com.example.ui.theme.StudioCardBgElevated
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextSecondary
+import java.util.Locale
 
 @Composable
 fun ExportDialog(
     exportProgress: Float?,
+    exportStage: String,
     isExported: Boolean,
     exportResult: ExportResult?,
     selectedQuality: ExportQuality,
     editPlan: VideoEditPlan?,
-    onSelectQuality: (ExportQuality) -> Unit,
+    onPreview: () -> Unit,
     onShare: () -> Unit,
     onDismiss: () -> Unit
 ) {
     if (exportProgress == null && !isExported) return
-    val context = LocalContext.current
 
-    Dialog(onDismissRequest = onDismiss) {
+    Dialog(onDismissRequest = {
+        if (isExported) onDismiss()
+    }) {
         Surface(
             shape = RoundedCornerShape(16.dp),
             color = StudioCardBg,
@@ -80,7 +78,6 @@ fun ExportDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (!isExported) {
-                    // Export Rendering Progress
                     Box(
                         modifier = Modifier
                             .size(54.dp)
@@ -101,23 +98,17 @@ fun ExportDialog(
                         text = "Rendering in ${selectedQuality.displayName}...",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = Color.White,
+                        textAlign = TextAlign.Center
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
 
-                    val stepText = when {
-                        (exportProgress ?: 0f) < 0.20f -> "Stitching & trimming video cuts..."
-                        (exportProgress ?: 0f) < 0.50f -> "Applying ${editPlan?.filter?.displayName ?: "Color"} grade filter..."
-                        (exportProgress ?: 0f) < 0.75f -> "Burning animated subtitles & captions..."
-                        (exportProgress ?: 0f) < 0.90f -> "Muxing audio & background soundtrack..."
-                        else -> "Finalizing 60 FPS MP4 video file..."
-                    }
-
                     Text(
-                        text = stepText,
+                        text = exportStage,
                         fontSize = 12.sp,
-                        color = TextSecondary
+                        color = TextSecondary,
+                        textAlign = TextAlign.Center
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -140,7 +131,6 @@ fun ExportDialog(
                         color = Color.White
                     )
                 } else {
-                    // Export Finished Card
                     Box(
                         modifier = Modifier
                             .size(54.dp)
@@ -158,7 +148,7 @@ fun ExportDialog(
                     Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
-                        text = "Video Rendered Successfully!",
+                        text = "Full HD Video Exported!",
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -173,46 +163,30 @@ fun ExportDialog(
                         fontWeight = FontWeight.SemiBold
                     )
 
+                    if (exportResult?.galleryUri != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Saved to Movies/PromptCut in Gallery",
+                            fontSize = 11.sp,
+                            color = Color(0xFF34D399)
+                        )
+                    }
+
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Video Specs Card
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(8.dp),
                         colors = CardDefaults.cardColors(containerColor = StudioCardBgElevated)
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Quality", fontSize = 11.sp, color = TextMuted)
-                                Text(text = selectedQuality.displayName, fontSize = 11.sp, color = AccentElectricCyan, fontWeight = FontWeight.Bold)
-                            }
+                            SpecRow("Resolution", exportResult?.resolutionLabel ?: "1080 x 1920 (Full HD)")
                             Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Resolution", fontSize = 11.sp, color = TextMuted)
-                                Text(text = exportResult?.resolutionLabel ?: "1080 x 1920 (60 FPS)", fontSize = 11.sp, color = Color.White)
-                            }
+                            SpecRow("Duration", String.format(Locale.US, "%.1f sec", exportResult?.durationSeconds ?: 0f))
                             Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Estimated File Size", fontSize = 11.sp, color = TextMuted)
-                                Text(text = exportResult?.formattedSize ?: "14.2 MB", fontSize = 11.sp, color = Color.White)
-                            }
+                            SpecRow("File Size", exportResult?.formattedSize ?: "--")
                             Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Audio Track", fontSize = 11.sp, color = TextMuted)
-                                Text(text = "AAC 48kHz Stereo", fontSize = 11.sp, color = Color.White)
-                            }
+                            SpecRow("Codec", "H.264 / MP4")
                         }
                     }
 
@@ -223,16 +197,13 @@ fun ExportDialog(
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = {
-                                Toast.makeText(context, "Saved to device storage: ${exportResult?.fileName ?: "video"}", Toast.LENGTH_LONG).show()
-                                onDismiss()
-                            },
+                            onClick = { onPreview() },
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f)
                         ) {
-                            Icon(imageVector = Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(imageVector = Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "Save", fontSize = 12.sp)
+                            Text(text = "Play Video", fontSize = 12.sp, color = Color.White)
                         }
 
                         Button(
@@ -249,8 +220,25 @@ fun ExportDialog(
                             Text(text = "Share Video", fontSize = 12.sp)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    TextButton(onClick = onDismiss) {
+                        Text(text = "Done", color = TextSecondary, fontSize = 12.sp)
+                    }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SpecRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, fontSize = 11.sp, color = TextMuted)
+        Text(text = value, fontSize = 11.sp, color = Color.White, fontWeight = FontWeight.Medium)
     }
 }

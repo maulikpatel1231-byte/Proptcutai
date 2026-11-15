@@ -1,6 +1,8 @@
 package com.example.viewmodel
 
 import android.content.Context
+import android.graphics.BitmapFactory
+import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Log
@@ -23,6 +25,7 @@ import com.example.model.VideoCut
 import com.example.model.VideoEditPlan
 import com.example.model.VideoFilter
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,7 +35,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
+import kotlin.math.roundToInt
 
 private const val TAG = "VideoEditorViewModel"
 
@@ -47,7 +52,7 @@ class VideoEditorViewModel : ViewModel() {
     val mediaFiles: StateFlow<List<MediaFileItem>> = _mediaFiles.asStateFlow()
 
     // 2. User Prompt & Aspect Ratio
-    private val _promptText = MutableStateFlow("Make a cinematic vlog with smooth cuts, warm film filter, and pop subtitles")
+    private val _promptText = MutableStateFlow("Make a cinematic reel with punchy cuts, warm film grade, and bold synced captions")
     val promptText: StateFlow<String> = _promptText.asStateFlow()
 
     private val _aspectRatio = MutableStateFlow(AspectRatio.PORTRAIT_9_16)
@@ -110,6 +115,12 @@ class VideoEditorViewModel : ViewModel() {
     private val _exportProgress = MutableStateFlow<Float?>(null)
     val exportProgress: StateFlow<Float?> = _exportProgress.asStateFlow()
 
+    private val _exportStage = MutableStateFlow("Preparing hardware encoder...")
+    val exportStage: StateFlow<String> = _exportStage.asStateFlow()
+
+    private val _exportError = MutableStateFlow<String?>(null)
+    val exportError: StateFlow<String?> = _exportError.asStateFlow()
+
     private val _isExported = MutableStateFlow(false)
     val isExported: StateFlow<Boolean> = _isExported.asStateFlow()
 
@@ -125,14 +136,18 @@ class VideoEditorViewModel : ViewModel() {
 
     fun setAspectRatio(ratio: AspectRatio) {
         _aspectRatio.value = ratio
+        _currentEditPlan.value = _currentEditPlan.value?.copy(aspectRatio = ratio)
     }
 
     fun setFilter(filter: VideoFilter) {
         _activeFilter.value = filter
+        _currentEditPlan.value = _currentEditPlan.value?.copy(filter = filter)
     }
 
     fun setFilterIntensity(intensity: Float) {
-        _filterIntensity.value = intensity.coerceIn(0.1f, 1.0f)
+        val clamped = intensity.coerceIn(0.1f, 1.0f)
+        _filterIntensity.value = clamped
+        _currentEditPlan.value = _currentEditPlan.value?.copy(filterIntensity = clamped)
     }
 
     fun toggleAudioMute() {
@@ -141,42 +156,115 @@ class VideoEditorViewModel : ViewModel() {
         soundEngine.setMuted(newMute)
     }
 
+    fun clearAiError() {
+        if (_aiUiState.value is AiEditUiState.Error) {
+            _aiUiState.value = AiEditUiState.Idle
+        }
+    }
+
     fun addMediaUris(context: Context, uris: List<Uri>) {
-        val newItems = uris.map { uri ->
-            var displayName = "Media_${System.currentTimeMillis() % 10000}.mp4"
-            var isVideo = true
+        if (uris.isEmpty()) return
+        val appContext = context.applicationContext
 
-            try {
-                val mime = context.contentResolver.getType(uri) ?: ""
-                if (mime.startsWith("image/")) {
-                    isVideo = false
-                    displayName = "Photo_${System.currentTimeMillis() % 10000}.jpg"
+        viewModelScope.launch {
+            val newItems = withContext(Dispatchers.IO) {
+                uris.map { uri ->
+                    extractMediaMetadata(appContext, uri)
                 }
+            }
+            val updatedFiles = _mediaFiles.value + newItems
+            _mediaFiles.value = updatedFiles
+            buildWorkingTimeline(updatedFiles)
+            if (_aiUiState.value is AiEditUiState.Error) {
+                _aiUiState.value = AiEditUiState.Idle
+            }
+        }
+    }
 
-                context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    if (cursor.moveToFirst() && nameIndex != -1) {
-                        displayName = cursor.getString(nameIndex) ?: displayName
+    private fun extractMediaMetadata(context: Context, uri: Uri): MediaFileItem {
+        var displayName = "Media_${System.currentTimeMillis() % 10000}"
+        var isVideo = true
+
+        try {
+            val mime = context.contentResolver.getType(uri) ?: ""
+            isVideo = !mime.startsWith("image/")
+            displayName = if (isVideo) "${displayName}.mp4" else "${displayName}.jpg"
+
+            context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && nameIndex != -1) {
+                    displayName = cursor.getString(nameIndex) ?: displayName
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not resolve URI display name", e)
+        }
+
+        var durationSec = if (isVideo) 8 else 4
+        var width = 1080
+        var height = 1920
+
+        if (isVideo) {
+            val retriever = MediaMetadataRetriever()
+            try {
+                retriever.setDataSource(context, uri)
+                val durationMs = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+                if (durationMs != null && durationMs > 0L) {
+                    durationSec = (durationMs / 1000f).roundToInt().coerceIn(1, 300)
+                }
+                val rawW = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull()
+                val rawH = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull()
+                val rot = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
+                if (rawW != null && rawH != null && rawW > 0 && rawH > 0) {
+                    if (rot == 90 || rot == 270) {
+                        width = rawH
+                        height = rawW
+                    } else {
+                        width = rawW
+                        height = rawH
                     }
                 }
             } catch (e: Exception) {
-                Log.w(TAG, "Could not resolve URI details", e)
+                Log.w(TAG, "Failed extracting video metadata for $displayName", e)
+            } finally {
+                try {
+                    retriever.release()
+                } catch (_: Exception) {}
             }
-
-            MediaFileItem(
-                id = UUID.randomUUID().toString(),
-                name = displayName,
-                uri = uri,
-                type = if (isVideo) MediaType.VIDEO else MediaType.IMAGE,
-                durationSec = if (isVideo) 8 else 4,
-                resolutionLabel = if (isVideo) "Full HD 1080p" else "Photo",
-                description = "User added file: $displayName"
-            )
+        } else {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeStream(stream, null, opts)
+                    if (opts.outWidth > 0 && opts.outHeight > 0) {
+                        width = opts.outWidth
+                        height = opts.outHeight
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed reading photo bounds for $displayName", e)
+            }
         }
 
-        val updatedFiles = _mediaFiles.value + newItems
-        _mediaFiles.value = updatedFiles
-        buildWorkingTimeline(updatedFiles)
+        val resLabel = when {
+            !isVideo -> "${width}x${height} Photo"
+            maxOf(width, height) >= 3840 -> "4K Ultra HD"
+            maxOf(width, height) >= 1920 -> "Full HD 1080p"
+            maxOf(width, height) >= 1280 -> "HD 720p"
+            else -> "${width}x${height}"
+        }
+
+        return MediaFileItem(
+            id = UUID.randomUUID().toString(),
+            name = displayName,
+            uri = uri,
+            type = if (isVideo) MediaType.VIDEO else MediaType.IMAGE,
+            durationSec = durationSec,
+            resolutionLabel = resLabel,
+            width = width,
+            height = height,
+            description = "User added ${if (isVideo) "video" else "photo"}: $displayName (${durationSec}s, ${width}x${height})"
+        )
     }
 
     private fun buildWorkingTimeline(files: List<MediaFileItem>) {
@@ -199,13 +287,13 @@ class VideoEditorViewModel : ViewModel() {
             )
         }
 
-        val totalDuration = cuts.sumOf { it.durationSec.toDouble() }.toFloat().coerceAtLeast(3f)
+        val totalDuration = cuts.sumOf { it.durationSec.toDouble() }.toFloat().coerceAtLeast(1f)
         val existingPlan = _currentEditPlan.value
 
         _currentEditPlan.value = VideoEditPlan(
             title = existingPlan?.title ?: "User Project (${files.size} items)",
-            creativeSummary = existingPlan?.creativeSummary ?: "Timeline populated with ${files.size} clips. Ready for AI prompt editing.",
-            directorsRationale = existingPlan?.directorsRationale ?: "Add a prompt above and tap 'Generate Video Edit with AI' to let Gemini craft cinematic cuts and captions.",
+            creativeSummary = existingPlan?.creativeSummary ?: "Timeline ready with ${files.size} clips. Enter a prompt and tap 'Generate Video Edit with AI'.",
+            directorsRationale = existingPlan?.directorsRationale ?: "Gemini 3.8 Flash will inspect frames from your clips and generate synchronized cuts, color grade, and captions.",
             filter = _activeFilter.value,
             filterIntensity = _filterIntensity.value,
             aspectRatio = _aspectRatio.value,
@@ -213,7 +301,8 @@ class VideoEditorViewModel : ViewModel() {
             captions = existingPlan?.captions ?: emptyList(),
             backgroundMusicMood = existingPlan?.backgroundMusicMood ?: "Chill Lofi Synth",
             soundEffects = existingPlan?.soundEffects ?: emptyList(),
-            estimatedFinalDurationSec = totalDuration
+            estimatedFinalDurationSec = totalDuration,
+            isAiGenerated = false
         )
     }
 
@@ -230,7 +319,7 @@ class VideoEditorViewModel : ViewModel() {
         pausePlayback()
     }
 
-    fun generateAiEdit() {
+    fun generateAiEdit(context: Context) {
         val prompt = _promptText.value.trim()
         val files = _mediaFiles.value
 
@@ -244,20 +333,26 @@ class VideoEditorViewModel : ViewModel() {
             return
         }
 
+        val appContext = context.applicationContext
         viewModelScope.launch {
-            _aiUiState.value = AiEditUiState.Analyzing("AI Director is analyzing your clips with Gemini 3.8 Flash...")
+            _aiUiState.value = AiEditUiState.Analyzing("Analyzing your video frames & editing with Gemini 3.8 Flash...")
             pausePlayback()
 
             try {
                 val plan = aiDirector.generateEditPlan(
+                    context = appContext,
                     prompt = prompt,
                     mediaFiles = files,
                     aspectRatio = _aspectRatio.value
                 )
                 _currentEditPlan.value = plan
                 _activeFilter.value = plan.filter
+                _filterIntensity.value = plan.filterIntensity
                 _playbackPositionSec.value = 0f
+                lastCutIdSeen = null
                 _aiUiState.value = AiEditUiState.Success(plan)
+                // Auto-start preview playback of the generated AI video edit
+                startPlayback()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -287,12 +382,14 @@ class VideoEditorViewModel : ViewModel() {
         val plan = _currentEditPlan.value ?: return
         val maxDuration = plan.estimatedFinalDurationSec.coerceAtLeast(1f)
 
-        if (_playbackPositionSec.value >= maxDuration) {
+        if (_playbackPositionSec.value >= maxDuration - 0.1f) {
             _playbackPositionSec.value = 0f
         }
 
         _isPlaying.value = true
-        soundEngine.startAmbientTrack(viewModelScope, plan.backgroundMusicMood)
+        if (!_isAudioMuted.value) {
+            soundEngine.startAmbientTrack(viewModelScope, plan.backgroundMusicMood)
+        }
 
         playbackJob?.cancel()
         playbackJob = viewModelScope.launch {
@@ -301,7 +398,6 @@ class VideoEditorViewModel : ViewModel() {
                 delay(stepMs)
                 val newPos = _playbackPositionSec.value + (stepMs / 1000f)
 
-                // Sound chime on scene change
                 val currentCut = activeCut.value
                 if (currentCut != null && currentCut.id != lastCutIdSeen) {
                     if (lastCutIdSeen != null) {
@@ -312,6 +408,7 @@ class VideoEditorViewModel : ViewModel() {
 
                 if (newPos >= maxDuration) {
                     _playbackPositionSec.value = 0f
+                    lastCutIdSeen = null
                 } else {
                     _playbackPositionSec.value = newPos
                 }
@@ -337,7 +434,6 @@ class VideoEditorViewModel : ViewModel() {
             val cut = cuts[i]
             val duration = cut.durationSec
             if (pos > accum + 0.3f && pos < accum + duration - 0.3f) {
-                // Split point inside cut
                 val relativeSplit = (pos - accum) * cut.playbackSpeed
                 val firstCut = cut.copy(
                     id = UUID.randomUUID().toString(),
@@ -351,7 +447,8 @@ class VideoEditorViewModel : ViewModel() {
                 cuts.add(i, secondCut)
                 cuts.add(i, firstCut)
 
-                _currentEditPlan.value = plan.copy(cuts = cuts)
+                val newTotal = cuts.sumOf { it.durationSec.toDouble() }.toFloat().coerceAtLeast(1f)
+                _currentEditPlan.value = plan.copy(cuts = cuts, estimatedFinalDurationSec = newTotal)
                 soundEngine.playCutChime(viewModelScope)
                 return
             }
@@ -423,29 +520,58 @@ class VideoEditorViewModel : ViewModel() {
     }
 
     fun startExport(context: Context) {
-        val plan = _currentEditPlan.value ?: return
-        if (_mediaFiles.value.isEmpty()) {
-            _aiUiState.value = AiEditUiState.Error("Add media files before exporting.")
+        val basePlan = _currentEditPlan.value
+        val files = _mediaFiles.value
+        if (basePlan == null || files.isEmpty()) {
+            _aiUiState.value = AiEditUiState.Error("Add videos or photos before exporting.")
             return
         }
+
+        val activePlan = basePlan.copy(
+            filter = _activeFilter.value,
+            filterIntensity = _filterIntensity.value,
+            aspectRatio = _aspectRatio.value,
+            isAudioMuted = _isAudioMuted.value
+        )
+
         pausePlayback()
         _isExported.value = false
+        _exportError.value = null
+        _exportStage.value = "Initializing Full HD hardware encoder..."
+        _exportProgress.value = 0.03f
 
+        val appContext = context.applicationContext
         viewModelScope.launch {
-            _exportProgress.value = 0.05f
-            val totalSteps = 20
-            for (i in 1..totalSteps) {
-                delay(80)
-                _exportProgress.value = (i.toFloat() / totalSteps)
+            try {
+                val result = exportEngine.exportProject(
+                    context = appContext,
+                    plan = activePlan,
+                    mediaFiles = files,
+                    quality = _exportQuality.value,
+                    onProgress = { progress, stage ->
+                        _exportProgress.value = progress.coerceIn(0f, 1f)
+                        _exportStage.value = stage
+                    }
+                )
+                _exportResult.value = result
+                _exportProgress.value = 1.0f
+                _isExported.value = true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "Video export failed", e)
+                _exportProgress.value = null
+                _exportError.value = e.localizedMessage ?: "Failed to render MP4 video."
+                _aiUiState.value = AiEditUiState.Error(
+                    "Export failed: ${e.localizedMessage ?: "Unable to encode video"}"
+                )
             }
-
-            // Generate real export file
-            val result = exportEngine.exportProject(context, plan, _exportQuality.value)
-            _exportResult.value = result
-            _exportProgress.value = 1.0f
-            delay(150)
-            _isExported.value = true
         }
+    }
+
+    fun previewExportedVideo(context: Context) {
+        val result = _exportResult.value ?: return
+        exportEngine.previewExportedVideo(context, result)
     }
 
     fun shareExportedVideo(context: Context) {
@@ -456,6 +582,7 @@ class VideoEditorViewModel : ViewModel() {
     fun dismissExport() {
         _exportProgress.value = null
         _isExported.value = false
+        _exportError.value = null
     }
 
     override fun onCleared() {
